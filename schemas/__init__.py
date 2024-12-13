@@ -1,1 +1,1 @@
-from .user import UserCreate, UserBase
+from .user import AddressRequest, AddressResponse, PropertyDetailsResponse

@@ -6,23 +6,153 @@ import json
 import time
 from sqlalchemy.orm import Session
 from api import dependencies
+from bs4 import BeautifulSoup
+from schemas.user import AddressRequest, AddressResponse, PropertyDetailsResponse
+import logging
 
 router = APIRouter()
 
 
-class AddressRequest(BaseModel):
-    address: str
-    city: str
-    state: str
-    zip: str
+# def fetch_property_details(url: str) -> dict:
+#     """
+#     This function takes the Redfin property URL and scrapes the page to get property details.
+#     """
+#     headers = {
+#         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/85.0.4183.121 Safari/537.36"
+#     }
+
+#     try:
+#         response = requests.get(url, headers=headers)
+#         response.raise_for_status()
+
+#         soup = BeautifulSoup(response.text, "html.parser")
+
+#         # Log the page content to see if the structure changes
+#         logging.debug("Page content:\n" + soup.prettify())
+
+#         details = {}
+
+#         # Extracting the price
+#         price_section = soup.find("div", {"data-rf-test-id": "abp-price"})
+#         if price_section and price_section.find("div", {"class": "statsValue"}):
+#             details["price"] = price_section.find("div", {"class": "statsValue"}).text.strip()
+#         else:
+#             details["price"] = "Not Available"
+
+#         # Extracting the beds
+#         beds_section = soup.find("div", {"data-rf-test-id": "abp-beds"})
+#         if beds_section and beds_section.find("div", {"class": "statsValue"}):
+#             details["beds"] = beds_section.find("div", {"class": "statsValue"}).text.strip()
+#         else:
+#             details["beds"] = "Not Available"
+
+#         # Extracting the baths
+#         baths_section = soup.find("div", {"class": "stat-block baths-section"})
+#         if baths_section and baths_section.find("div", {"class": "statsValue"}):
+#             details["baths"] = baths_section.find("div", {"class": "statsValue"}).text.strip()
+#         else:
+#             details["baths"] = "Not Available"
+
+#         # Extracting the square footage
+#         sqft_section = soup.find("span", {"class": "statsValue"})
+#         if sqft_section:
+#             details["sqft"] = sqft_section.text.strip()
+#         else:
+#             details["sqft"] = "Not Available"
+
+#         return details
+
+#     except Exception as e:
+#         logging.error(f"Error fetching data: {str(e)}")
+#         raise HTTPException(status_code=500, detail=f"Error fetching data: {str(e)}")
 
 
-class AddressResponse(BaseModel):
-    address: str
-    city: str
-    state: str
-    zip: str
-    redfin_url: str
+# @router.post("/get-property-details/web", response_model=PropertyDetailsResponse)
+# def get_property_details(*, url: str):
+#     """
+#     Endpoint to get detailed property information from a Redfin URL.
+#     """
+#     property_details = fetch_property_details(url)
+#     return PropertyDetailsResponse(
+#         price=property_details["price"],
+#         beds=property_details["beds"],
+#         baths=property_details["baths"],
+#         sqft=property_details["sqft"],
+#     )
+
+
+@router.post("/get-property-details/web", response_model=PropertyDetailsResponse)
+def get_property_details(*, url: str):
+    """
+    Endpoint to get detailed property information from a Redfin URL.
+    """
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/85.0.4183.121 Safari/537.36"
+    }
+
+    try:
+        # Make the request to fetch the page content
+        response = requests.get(url, headers=headers)
+        response.raise_for_status()
+
+        # Parse the page content with BeautifulSoup
+        soup = BeautifulSoup(response.text, "html.parser")
+
+        # Log the page content to see if the structure changes
+        logging.debug("Page content:\n" + soup.prettify())
+
+        # Initialize a dictionary to store the details
+        details = {}
+
+        # Extracting the price
+        price_section = soup.find("div", {"data-rf-test-id": "abp-price"})
+        if price_section and price_section.find("div", {"class": "statsValue"}):
+            details["price"] = price_section.find(
+                "div", {"class": "statsValue"}
+            ).text.strip()
+        else:
+            details["price"] = "Not Available"
+
+        # Extracting the beds
+        beds_section = soup.find("div", {"data-rf-test-id": "abp-beds"})
+        if beds_section and beds_section.find("div", {"class": "statsValue"}):
+            details["beds"] = beds_section.find(
+                "div", {"class": "statsValue"}
+            ).text.strip()
+        else:
+            details["beds"] = "Not Available"
+
+        # Extracting the baths
+        print(
+            "-------------------------------------------------------------------------",
+            details,
+        )
+        baths_section = soup.find("div", {"class": "stat-block baths-section"})
+        if baths_section and baths_section.find("div", {"class": "statsValue"}):
+            details["baths"] = baths_section.find(
+                "div", {"class": "statsValue"}
+            ).text.strip()
+        else:
+            details["baths"] = "Not Available"
+
+        # Extracting the square footage
+        sqft_section = soup.find("span", {"class": "statsValue"})
+        if sqft_section:
+            details["sqft"] = sqft_section.text.strip()
+        else:
+            details["sqft"] = "Not Available"
+
+        # Return the details as response
+        return PropertyDetailsResponse(
+            price=details["price"],
+            beds=details["beds"],
+            baths=details["baths"],
+            sqft=details["sqft"],
+        )
+
+    except Exception as e:
+        logging.error(f"Error fetching data: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error fetching data: {str(e)}")
 
 
 def search_redfin_property(full_address: str) -> str:
@@ -79,6 +209,7 @@ def get_redfin_urls(addresses: List[AddressRequest]):
         )
 
     return results
+
 
 @router.post("/get-redfin-url-single/", status_code=200)
 def get_redfin_url_single(address_data: AddressRequest):

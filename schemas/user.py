@@ -15,11 +15,14 @@ class UserCreate(UserBase):
     first_name: str
     email: EmailStr
     status: int = 1
+
     class Config:
         orm_mode = True
 
+
 class UserDetails(UserBase):
     gender: str
+
     class Config:
         orm_mode = True
 
@@ -39,8 +42,7 @@ class UserInDBBase(UserBase):
         orm_mode = True
 
 
-class UserOnly(UserInDBBase):
-    ...
+class UserOnly(UserInDBBase): ...
 
 
 class UserSearch(BaseModel):
@@ -48,3 +50,24 @@ class UserSearch(BaseModel):
     pageSize: int
     sortDesc: bool
 
+
+class PropertyDetailsResponse(BaseModel):
+    price: str
+    beds: str
+    baths: str
+    sqft: str
+
+
+class AddressRequest(BaseModel):
+    address: str
+    city: str
+    state: str
+    zip: str
+
+
+class AddressResponse(BaseModel):
+    address: str
+    city: str
+    state: str
+    zip: str
+    redfin_url: str
