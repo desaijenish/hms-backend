@@ -275,7 +275,7 @@ def get_redfin_urls(addresses: List[AddressRequest]):
             # Append the property details to the results
             results.append(
                 {
-                    "id": addresses.id,
+                    "id": entry.id,
                     "redfin_url": redfin_url,
                     "price": url_data["price"],
                     "beds": url_data["beds"],
