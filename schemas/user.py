@@ -59,6 +59,7 @@ class PropertyDetailsResponse(BaseModel):
 
 
 class AddressRequest(BaseModel):
+    id: str
     address: str
     city: str
     state: str
@@ -66,8 +67,9 @@ class AddressRequest(BaseModel):
 
 
 class AddressResponse(BaseModel):
-    address: str
-    city: str
-    state: str
-    zip: str
+    id: str
     redfin_url: str
+    price: str
+    beds: str
+    baths: str
+    sqft: str
