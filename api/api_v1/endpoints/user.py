@@ -18,6 +18,7 @@ from util.user_util import (
     process_in_batches,
 )
 import requests
+import aiohttp
 
 # Set up the router and cache
 
@@ -57,36 +58,35 @@ async def get_redfin_urls(addresses: List[AddressRequest]):
     return results
 
 
-# Single Address API Endpoint
-@router.post(
-    "/get-redfin-url-single/",
-    response_model=AddressResponse,
-    dependencies=[Depends(validate_secret_key)],
-)
-async def get_redfin_url_single(address: AddressRequest):
-    try:
-        full_address = (
-            f"{address.address}, {address.city}, {address.state} {address.zip}"
-        )
-        redfin_url = await search_redfin_property(full_address)
+# # Single Address API Endpoint
+# @router.post(
+#     "/get-redfin-url-single/",
+#     response_model=AddressResponse,
+#     dependencies=[Depends(validate_secret_key)],
+# )
+# async def get_redfin_url_single(address: AddressRequest):
+#     try:
+#         full_address = (
+#             f"{address.address}, {address.city}, {address.state} {address.zip}"
+#         )
+#         redfin_url = await search_redfin_property(full_address)
 
-        if redfin_url == "Not Found":
-            raise HTTPException(status_code=404, detail="Redfin URL not found.")
+#         if redfin_url == "Not Found":
+#             raise HTTPException(status_code=404, detail="Redfin URL not found.")
 
-        details = await fetch_property_details(redfin_url)
-        return {
-            "id": address.id,
-            "redfin_url": redfin_url,
-            **details,
-        }
-    except Exception as e:
-        logging.error(f"Error processing single address: {e}")
-        raise HTTPException(status_code=500, detail=f"An error occurred: {e}")
-
-
-def search_redfin_property(full_address: str) -> str:
+#         details = await fetch_property_details(redfin_url)
+#         return {
+#             "id": address.id,
+#             "redfin_url": redfin_url,
+#             **details,
+#         }
+#     except Exception as e:
+#         logging.error(f"Error processing single address: {e}")
+#         raise HTTPException(status_code=500, detail=f"An error occurred: {e}")
+    
+async def fetch_redfin_property(session, full_address: str) -> str:
     """
-    This function takes a full address and queries the Redfin autocomplete API to get the property URL.
+    Asynchronously fetches the Redfin property URL for a given address.
     """
     formatted_address = full_address.replace(" ", "%20")
     search_url = f"https://www.redfin.com/stingray/do/location-autocomplete?location={formatted_address}&v=2"
@@ -95,46 +95,55 @@ def search_redfin_property(full_address: str) -> str:
     }
 
     try:
-        response = requests.get(search_url, headers=headers)
-        response.raise_for_status()
-        raw_text = response.text
-        prefix = "{}&&"
-        if raw_text.startswith(prefix):
-            json_text = raw_text[len(prefix) :]
-        else:
-            json_text = raw_text
+        async with session.get(search_url, headers=headers) as response:
+            response.raise_for_status()
+            raw_text = await response.text()
+            prefix = "{}&&"
+            if raw_text.startswith(prefix):
+                json_text = raw_text[len(prefix) :]
+            else:
+                json_text = raw_text
 
-        data = json.loads(json_text)
+            data = json.loads(json_text)
 
-        if data and "payload" in data and "sections" in data["payload"]:
-            for section in data["payload"]["sections"]:
-                for item in section["rows"]:
-                    if "url" in item:
-                        return f"https://www.redfin.com{item['url']}"
+            if data and "payload" in data and "sections" in data["payload"]:
+                for section in data["payload"]["sections"]:
+                    for item in section["rows"]:
+                        if "url" in item:
+                            return f"https://www.redfin.com{item['url']}"
         return "Not Found"
     except Exception as e:
         print(f"Error fetching data for address {full_address}: {e}")
         return "Not Found"
+async def fetch_all_redfin_urls(addresses: List[AddressRequest]) -> List[dict]:
+    """
+    Fetch Redfin URLs for a list of addresses asynchronously.
+    """
+    async with aiohttp.ClientSession() as session:
+        tasks = []
+        for entry in addresses:
+            # Access attributes using dot notation
+            full_address = f"{entry.address}, {entry.city}, {entry.state} {entry.zip}"
+            print(f"Fetching URL for: {full_address}")
+            tasks.append(fetch_redfin_property(session, full_address))
 
+        results = await asyncio.gather(*tasks)
+        return results
 
 @router.post("/get-redfin-urls/web", response_model=List[URlResponse])
-def get_redfin_urls(addresses: List[AddressRequest]):
+async def get_redfin_urls(addresses: List[AddressRequest]):
     """
     Endpoint to get the Redfin URLs for a list of addresses.
     """
-    results = []
-    for entry in addresses:
-        full_address = f"{entry.address}, {entry.city}, {entry.state} {entry.zip}"
-        print(f"Fetching URL for: {full_address}")
-        redfin_url = search_redfin_property(full_address)
-        results.append(
-            {
-                "id": entry.id,
-                "redfin_url": redfin_url,
-            }
-        )
-
-    return results
+    results = await fetch_all_redfin_urls(addresses)
+    # Combine the Redfin URLs with their IDs into the response structure
+    return [
+        {
+            "id": entry.id,  # Access the 'id' attribute with dot notation
+            "redfin_url": result,
+        }
+        for entry, result in zip(addresses, results)
+    ]
 
 
 # @router.post(
