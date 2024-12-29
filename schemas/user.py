@@ -73,3 +73,7 @@ class AddressResponse(BaseModel):
     beds: str
     baths: str
     sqft: str
+
+class URlResponse(BaseModel):
+    id: str
+    redfin_url: str
