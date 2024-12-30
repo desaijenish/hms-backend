@@ -10,3 +10,7 @@ Set the database configuration into the `config\setting.py`
   -> alembic revision --autogenerate -m "your message"
   -> alembic upgrade head
 5. Run `uvicorn app:app --reload`
+
+
+pip freeze > requirements.txt 
+ModuleNotFoundError: No module named 'LY'

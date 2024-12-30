@@ -47,44 +47,6 @@ class URLRes(BaseModel):
     id: str
     redfin_url: str
 
-
-@router.post(
-    "/get-redfin-urls/",
-    response_model=List[AddressResponse],
-    dependencies=[Depends(validate_secret_key)],
-)
-async def get_redfin_urls(addresses: List[AddressRequest]):
-    results = await asyncio.gather(*[process_address(address) for address in addresses])
-    return results
-
-
-# # Single Address API Endpoint
-# @router.post(
-#     "/get-redfin-url-single/",
-#     response_model=AddressResponse,
-#     dependencies=[Depends(validate_secret_key)],
-# )
-# async def get_redfin_url_single(address: AddressRequest):
-#     try:
-#         full_address = (
-#             f"{address.address}, {address.city}, {address.state} {address.zip}"
-#         )
-#         redfin_url = await search_redfin_property(full_address)
-
-#         if redfin_url == "Not Found":
-#             raise HTTPException(status_code=404, detail="Redfin URL not found.")
-
-#         details = await fetch_property_details(redfin_url)
-#         return {
-#             "id": address.id,
-#             "redfin_url": redfin_url,
-#             **details,
-#         }
-#     except Exception as e:
-#         logging.error(f"Error processing single address: {e}")
-#         raise HTTPException(status_code=500, detail=f"An error occurred: {e}")
-
-
 async def fetch_redfin_property(session, full_address: str) -> str:
     """
     Asynchronously fetches the Redfin property URL for a given address.
@@ -181,26 +143,6 @@ def search_redfin_property(full_address: str) -> str:
     except Exception as e:
         print(f"Error fetching data for address {full_address}: {e}")
         return "Not Found"
-
-
-@router.post("/get-redfin-urls/web/web", response_model=List[URlResponse])
-def get_redfin_urls(addresses: List[AddressRequest]):
-    """
-    Endpoint to get the Redfin URLs for a list of addresses.
-    """
-    results = []
-    for entry in addresses:
-        full_address = f"{entry.address}, {entry.city}, {entry.state} {entry.zip}"
-        print(f"Fetching URL for: {full_address}")
-        redfin_url = search_redfin_property(full_address)
-        results.append(
-            {
-                "id": entry.id,
-                "redfin_url": redfin_url,
-            }
-        )
-
-    return results
 
 
 async def fetch_with_retry(url, headers, retries=3):
