@@ -12,7 +12,7 @@ from fastapi.security.api_key import APIKeyHeader
 from schemas.user import AddressRequest, AddressResponse, URlResponse
 from util.user_util import (
     fetch_property_details,
-    fetch_with_retry,
+    # fetch_with_retry,
     # search_redfin_property,
     process_address,
     process_in_batches,
@@ -203,60 +203,79 @@ def get_redfin_urls(addresses: List[AddressRequest]):
     return results
 
 
-@router.post("/get-redfin-urls/web/web/dummy", response_model=List[URlResponse])
-def get_redfin_urls(addresses: List[AddressRequest]):
-    """
-    Endpoint to get the Redfin URLs for a list of addresses.
-    """
-    results = []
-    for entry in addresses:
-        full_address = f"{entry.address}, {entry.city}, {entry.state} {entry.zip}"
-        print(f"Fetching URL for: {full_address}")
-        # redfin_url = search_redfin_property(full_address)
-        search_url = f"https://www.redfin.com/stingray/do/location-autocomplete?location={full_address}&v=2"
-
-        results.append(
-            {
-                "id": entry.id,
-                "redfin_url": search_url,
-            }
-        )
-
-    return results
+async def fetch_with_retry(url, headers, retries=3):
+    """Fetch URL with retries."""
+    while retries > 0:
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.get(url, headers=headers) as response:
+                    if response.status == 200:
+                        return await response.text()
+                    elif response.status == 202:
+                        print(f"Received 202 from {url}. Retrying...")
+                    else:
+                        print(f"Error: {response.status} from {url}")
+        except Exception as e:
+            print(f"Error fetching {url}: {e}")
+        retries -= 1
+        await asyncio.sleep(5)  # Increase delay for retries
+    return None
 
 
-# @router.post(
-#     "/get-redfin-urls/web",
-#     response_model=List[URLRes],
-#     dependencies=[Depends(validate_secret_key)],
-# )
-# async def get_redfin_urls(addresses: List[AddressRequest]):
-#     full_address = (
-#         f"{addresses.address}, {addresses.city}, {addresses.state} {addresses.zip}"
-#     )
-#     formatted_address = full_address.replace(" ", "%20")
-#     search_url = f"https://www.redfin.com/stingray/do/location-autocomplete?location={formatted_address}&v=2"
-#     headers = {
-#         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/85.0.4183.121 Safari/537.36"
-#     }
+async def scrape_redfin(url):
+    """Scrape Redfin property details."""
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/117.0.0.0 Safari/537.36",
+        "Accept-Language": "en-US,en;q=0.9",
+        "Accept-Encoding": "gzip, deflate, br",
+        "Connection": "keep-alive",
+        "Upgrade-Insecure-Requests": "1",
+    }
 
-#     try:
-#         html = await fetch_with_retry(search_url, headers)
-#         raw_text = html
-#         prefix = "{}&&"
-#         json_text = raw_text[len(prefix) :] if raw_text.startswith(prefix) else raw_text
-#         data = json.loads(json_text)
+    html = await fetch_with_retry(url, headers)
+    if not html:
+        print(f"Failed to fetch {url}")
+        return {
+            "url": url,
+            "price": "Error",
+            "beds": "Error",
+            "baths": "Error",
+            "sqft": "Error",
+        }
 
-#         if data and "payload" in data and "sections" in data["payload"]:
-#             for section in data["payload"]["sections"]:
-#                 for item in section["rows"]:
-#                     if "url" in item:
-#                         return f"https://www.redfin.com{item['url']}"
-#         return "Not Found"
-#     except Exception as e:
-#         logging.error(f"Error searching property: {e}")
-#         return "Not Found"
-#     return results
+    soup = BeautifulSoup(html, "html.parser")
+    details = {}
+
+    # Extract details with fallback
+    details["price"] = (
+        soup.find("div", {"data-rf-test-id": "abp-price"})
+        .find("div", {"class": "statsValue"})
+        .text.strip()
+        if soup.find("div", {"data-rf-test-id": "abp-price"})
+        else "Not Available"
+    )
+    details["beds"] = (
+        soup.find("div", {"data-rf-test-id": "abp-beds"})
+        .find("div", {"class": "statsValue"})
+        .text.strip()
+        if soup.find("div", {"data-rf-test-id": "abp-beds"})
+        else "Not Available"
+    )
+    details["baths"] = (
+        soup.find("div", {"data-rf-test-id": "abp-baths"})
+        .find("div", {"class": "statsValue"})
+        .text.strip()
+        if soup.find("div", {"data-rf-test-id": "abp-baths"})
+        else "Not Available"
+    )
+    details["sqft"] = (
+        soup.find("div", {"data-rf-test-id": "abp-sqFt"}).text.strip()
+        if soup.find("div", {"data-rf-test-id": "abp-sqFt"})
+        else "Not Available"
+    )
+
+    details["url"] = url
+    return details
 
 
 @router.post(
@@ -265,9 +284,10 @@ def get_redfin_urls(addresses: List[AddressRequest]):
     dependencies=[Depends(validate_secret_key)],
 )
 async def get_redfin_urls(url: List[URLRes]):
-    results = await asyncio.gather(*[fetch_property_details(i.redfin_url) for i in url])
 
-    # Create a response with the additional fields
+    tasks = [scrape_redfin(i.redfin_url) for i in url]
+    results = await asyncio.gather(*tasks)
+
     response = [
         AddressResponse(
             id=i.id,
