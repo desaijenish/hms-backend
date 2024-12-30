@@ -23,9 +23,9 @@ app = FastAPI()
 
 # app.mount("/static", StaticFiles(directory="./static"), name="static")
 
-@root_router.get('/')
-def hello_world():
-    return {'message': 'Hello World!'}
+# @root_router.get('/')
+# def hello_world():
+#     return {'message': 'Hello World!'}
 
 
 app.include_router((api_v1.route_v1))
